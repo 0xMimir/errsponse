@@ -15,32 +15,27 @@ impl DataVariant {
         let mut head = self.head();
         let mut return_value = quote!(errsponse::serde_json::Value::Null);
 
-        if let Some(message) = self.attributes.message.as_ref() {
-            return_value = quote!(errsponse::serde_json::Value::String(format!(#message)))
-        }else if self.attributes.json {
+        if let Some(cause) = self.attributes.cause.as_ref() {
+            return_value = quote!(errsponse::serde_json::Value::String(format!(#cause)))
+        } else if self.attributes.json {
             return_value = quote!(errsponse::serde_json::to_value(&value).unwrap_or_default())
         }
 
-        quote!(#head => #return_value,)
+        quote!(#head => #return_value)
     }
 
     pub fn status_code(&self) -> TokenStream {
         let head = self.head();
         let status = &self.attributes.status_code;
 
-        quote!(#head => errsponse::http::StatusCode::#status,)
+        quote!(#head => errsponse::http::StatusCode::#status)
     }
 
     fn head(&self) -> TokenStream {
         let name = &self.name;
         let brackets = match &self.style {
             Fields::Named(fields) => {
-                let fields = fields
-                    .named
-                    .iter()
-                    .filter_map(|field| field.ident.as_ref())
-                    .collect::<Vec<_>>();
-
+                let fields = fields.named.iter().filter_map(|field| field.ident.as_ref());
                 quote!({#(#fields)*,})
             }
             Fields::Unnamed(_) => quote!((value)),
@@ -55,7 +50,7 @@ pub struct VariantAttribute {
     status_code: Ident,
     json: bool,
     nested: bool,
-    message: Option<Literal>,
+    cause: Option<Literal>,
 }
 
 impl Default for VariantAttribute {
@@ -64,29 +59,28 @@ impl Default for VariantAttribute {
             status_code: Ident::new("INTERNAL_SERVER_ERROR", Span::call_site()),
             json: false,
             nested: false,
-            message: None,
+            cause: None,
         }
     }
 }
 
 impl TryFrom<Variant> for DataVariant {
-    type Error = TokenStream;
+    type Error = syn::Error;
 
-    fn try_from(value: Variant) -> Result<Self, TokenStream> {
+    fn try_from(value: Variant) -> Result<Self, syn::Error> {
         let attributes = match value
             .attrs
             .into_iter()
             .find(VariantAttribute::has_attribute)
         {
-            Some(attributes) => {
-                let tokens = match attributes.meta {
-                    syn::Meta::Path(_) => todo!(),
-                    syn::Meta::List(meta) => meta.tokens,
-                    syn::Meta::NameValue(_) => todo!(),
-                };
+            Some(attributes) => match attributes.meta {
+                syn::Meta::Path(_) => VariantAttribute::default(),
+                syn::Meta::List(meta) => syn::parse(meta.tokens.into())?,
+                syn::Meta::NameValue(_) => {
+                    return Err(Error::new(Span::call_site(), "Invalid value passed"))
+                }
+            },
 
-                syn::parse(tokens.into()).map_err(|e| e.to_compile_error())?
-            }
             None => VariantAttribute::default(),
         };
 
@@ -105,8 +99,7 @@ impl VariantAttribute {
             .path()
             .segments
             .iter()
-            .find(|segment| segment.ident == "response")
-            .is_some()
+            .any(|segment| segment.ident == "response")
     }
 
     fn recurse(&mut self, stream: syn::parse::ParseStream) -> syn::Result<()> {
@@ -122,11 +115,11 @@ impl VariantAttribute {
                 stream.parse::<Token![=]>()?;
                 self.status_code = stream.parse()?;
             }
-            "message" => {
+            "cause" => {
                 stream.parse::<Token![=]>()?;
-                self.message = Some(stream.parse()?);
+                self.cause = Some(stream.parse()?);
             }
-            _ => return Err(Error::new(stream.span(), "Invalid attribute")),
+            _ => return Err(Error::new(stream.span(), format!("Invalid attribute: `{}`", attribute))),
         }
 
         if stream.peek(Token![,]) {

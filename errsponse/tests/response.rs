@@ -6,7 +6,7 @@ use serde_json::Value;
 
 struct SerdeError;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 struct InternalError {
     additional_data: String,
@@ -19,12 +19,14 @@ enum Error {
     #[response(status = UNAUTHORIZED)]
     Unauthorized,
     SerdeJson(SerdeError),
-    #[response(message = "{field}")]
+    #[response(cause = "{field}")]
     SomeError {
         field: String,
     },
     #[response(json)]
     InternalError(InternalError),
+    #[response(cause = "{value:#?}")]
+    OtherInternal(InternalError)
 }
 
 #[test]
@@ -59,9 +61,15 @@ fn response() {
         additional_data: "some thing went wrong".to_owned(),
     };
     let cause_as_value = serde_json::to_value(&cause).expect("How did we get here");
-    let error = Error::InternalError(cause);
+    let error = Error::InternalError(cause.clone());
     let response = error.to_response();
     assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(response.message, "Internal Server Error");
     assert_eq!(response.cause, cause_as_value);
+
+    let error = Error::OtherInternal(cause.clone());
+    let response = error.to_response();
+    assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(response.message, "Internal Server Error");
+    assert_eq!(response.cause, format!("{:#?}", cause));
 }
