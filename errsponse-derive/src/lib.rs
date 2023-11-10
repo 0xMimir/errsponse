@@ -2,6 +2,7 @@ use proc_macro::TokenStream;
 use syn::parse;
 
 mod derive;
+mod variant;
 
 #[proc_macro_derive(ErrorResponse, attributes(response))]
 pub fn derive_response(input: TokenStream) -> TokenStream {

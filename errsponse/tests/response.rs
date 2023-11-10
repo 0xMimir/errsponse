@@ -7,6 +7,7 @@ use serde_json::Value;
 struct SerdeError;
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InternalError {
     additional_data: String,
 }
