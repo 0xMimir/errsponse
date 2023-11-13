@@ -1,8 +1,11 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{DataEnum, DeriveInput, Error, punctuated::Punctuated, Token};
+use syn::{punctuated::Punctuated, DataEnum, DeriveInput, Error, Token};
 
-use crate::variant::DataVariant;
+use crate::{
+    default_response::{derive_default_response, should_derive_default_response},
+    variant::DataVariant,
+};
 
 pub fn implement_error_response(input: DeriveInput) -> TokenStream {
     match &input.data {
@@ -14,6 +17,11 @@ pub fn implement_error_response(input: DeriveInput) -> TokenStream {
 
 pub fn derive_enum(input: &DeriveInput, data: &DataEnum) -> TokenStream {
     let enum_name = &input.ident;
+
+    let derive_default = match should_derive_default_response(input.attrs.as_ref()) {
+        Ok(value) => value,
+        Err(error) => return error.to_compile_error(),
+    };
 
     let mut status_code_statements: Punctuated<TokenStream, Token![,]> = Punctuated::new();
     let mut cause_statements: Punctuated<TokenStream, Token![,]> = Punctuated::new();
@@ -27,6 +35,8 @@ pub fn derive_enum(input: &DeriveInput, data: &DataEnum) -> TokenStream {
         status_code_statements.push(data_variant.status_code());
         cause_statements.push(data_variant.cause());
     }
+
+    let default_response = derive_default.then(derive_default_response);
 
     quote!(
         impl errsponse::ImplErrorResponse for #enum_name{
@@ -42,5 +52,7 @@ pub fn derive_enum(input: &DeriveInput, data: &DataEnum) -> TokenStream {
                 }
             }
         }
+
+        #default_response
     )
 }
