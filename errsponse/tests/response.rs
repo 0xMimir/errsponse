@@ -27,7 +27,19 @@ enum Error {
     #[response(json)]
     InternalError(InternalError),
     #[response(cause = "{value:#?}")]
-    OtherInternal(InternalError)
+    OtherInternal(InternalError),
+    #[response(nested)]
+    Nested(NestedError)
+}
+
+#[derive(Response)]
+enum NestedError {
+    #[response(status = MOVED_PERMANENTLY, cause = "This has been moved")]
+    Moved,
+    #[response(status = CONFLICT,cause = "Username used")]
+    Conflict,
+    #[response(status = FORBIDDEN,cause = "You will not pass" )]
+    Forbidden,
 }
 
 #[test]
@@ -73,4 +85,19 @@ fn response() {
     assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(response.message, "Internal Server Error");
     assert_eq!(response.cause, format!("{:#?}", cause));
+
+    let error = Error::Nested(NestedError::Moved);
+    let response = ErrorResponse::from(error);
+    assert_eq!(response.status, StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(response.cause, Value::String("This has been moved".to_owned()));
+
+    let error = Error::Nested(NestedError::Conflict);
+    let response = ErrorResponse::from(error);
+    assert_eq!(response.status, StatusCode::CONFLICT);
+    assert_eq!(response.cause, Value::String("Username used".to_owned()));
+
+    let error = Error::Nested(NestedError::Forbidden);
+    let response = ErrorResponse::from(error);
+    assert_eq!(response.status, StatusCode::FORBIDDEN);
+    assert_eq!(response.cause, Value::String("You will not pass".to_owned()));
 }

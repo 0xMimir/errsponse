@@ -19,6 +19,8 @@ impl DataVariant {
             return_value = quote!(errsponse::serde_json::Value::String(format!(#cause)))
         } else if self.attributes.json {
             return_value = quote!(errsponse::serde_json::to_value(&value).unwrap_or_default())
+        } else if self.attributes.nested {
+            return_value = quote!(value.cause())
         }
 
         quote!(#head => #return_value)
@@ -28,7 +30,10 @@ impl DataVariant {
         let head = self.head();
         let status = &self.attributes.status_code;
 
-        quote!(#head => errsponse::http::StatusCode::#status)
+        match self.attributes.nested {
+            true => quote!(#head => value.status_code()),
+            false => quote!(#head => errsponse::http::StatusCode::#status),
+        }
     }
 
     fn head(&self) -> TokenStream {
@@ -119,7 +124,13 @@ impl VariantAttribute {
                 stream.parse::<Token![=]>()?;
                 self.cause = Some(stream.parse()?);
             }
-            _ => return Err(Error::new(stream.span(), format!("Invalid attribute: `{}`", attribute))),
+            "nested" => self.nested = true,
+            _ => {
+                return Err(Error::new(
+                    stream.span(),
+                    format!("Invalid attribute: `{}`", attribute),
+                ))
+            }
         }
 
         if stream.peek(Token![,]) {

@@ -1,9 +1,9 @@
 use proc_macro::TokenStream;
 use syn::parse;
 
+mod default_response;
 mod derive;
 mod variant;
-mod default_response;
 
 #[proc_macro_derive(ErrorResponse, attributes(response))]
 pub fn derive_response(input: TokenStream) -> TokenStream {
